@@ -144,7 +144,7 @@ def make_figure(
 def main() -> None:
     st.title("5D Bubble Dashboard")
 #    st.caption("SI = Strategic, SR = Risk, SP = Sustainability, bubble size = Value, color/grouping = GS")
-    st.caption("SI = Strategic, SR = Risk, SP = Sustainability, bubble size = Value, color/grouping = GS")
+    st.caption("5d bubble chart")
 
     try:
         df = load_data(DATA_FILE)
