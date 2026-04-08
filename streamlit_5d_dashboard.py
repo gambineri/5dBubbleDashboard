@@ -130,9 +130,9 @@ def make_figure(
     fig.update_layout(
         margin=dict(l=10, r=10, t=50, b=10),
         scene=dict(
-            xaxis=dict(title="SI", range=[axis_min, axis_max], nticks=5, backgroundcolor="rgba(240,240,240,0.35)"),
-            yaxis=dict(title="SR", range=[axis_min, axis_max], nticks=5, backgroundcolor="rgba(240,240,240,0.35)"),
-            zaxis=dict(title="SP", range=[axis_min, axis_max], nticks=5, backgroundcolor="rgba(240,240,240,0.35)"),
+            xaxis=dict(title="Strategic Importance", range=[axis_min, axis_max], nticks=5, backgroundcolor="rgba(240,240,240,0.35)"),
+            yaxis=dict(title="Supplier Risk", range=[axis_min, axis_max], nticks=5, backgroundcolor="rgba(240,240,240,0.35)"),
+            zaxis=dict(title="Potential for Sustainability", range=[axis_min, axis_max], nticks=5, backgroundcolor="rgba(240,240,240,0.35)"),
             aspectmode="cube",
         ),
         title="5D Bubble Chart",
@@ -143,6 +143,7 @@ def make_figure(
 
 def main() -> None:
     st.title("5D Bubble Dashboard")
+#    st.caption("SI = Strategic, SR = Risk, SP = Sustainability, bubble size = Value, color/grouping = GS")
     st.caption("SI = Strategic, SR = Risk, SP = Sustainability, bubble size = Value, color/grouping = GS")
 
     try:
