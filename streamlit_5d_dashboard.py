@@ -36,15 +36,15 @@ def normalize_sizes(values: pd.Series, min_size: float, max_size: float) -> np.n
 def add_center_axes(fig: go.Figure, center: float, axis_min: float, axis_max: float) -> None:
     fig.add_trace(go.Scatter3d(
         x=[axis_min, axis_max], y=[center, center], z=[center, center],
-        mode="lines", line=dict(color="black", width=6), showlegend=False, hoverinfo="skip"
+        mode="lines", line=dict(color="black", width=4), showlegend=False, hoverinfo="skip"
     ))
     fig.add_trace(go.Scatter3d(
         x=[center, center], y=[axis_min, axis_max], z=[center, center],
-        mode="lines", line=dict(color="black", width=6), showlegend=False, hoverinfo="skip"
+        mode="lines", line=dict(color="black", width=4), showlegend=False, hoverinfo="skip"
     ))
     fig.add_trace(go.Scatter3d(
         x=[center, center], y=[center, center], z=[axis_min, axis_max],
-        mode="lines", line=dict(color="black", width=6), showlegend=False, hoverinfo="skip"
+        mode="lines", line=dict(color="black", width=4), showlegend=False, hoverinfo="skip"
     ))
 
 
@@ -71,11 +71,11 @@ def make_figure(
 
     hovertemplate = (
         "<b>%{text}</b><br>"
-        "SI: %{x}<br>"
-        "SR: %{y}<br>"
-        "SP: %{z}<br>"
+        "Strategic Importance: %{x}<br>"
+        "Supplier Risk: %{y}<br>"
+        "Sustainability: %{z}<br>"
         "Value: %{customdata[0]:,.0f}<br>"
-        "GS: %{customdata[1]}<extra></extra>"
+        "G/S: %{customdata[1]}<extra></extra>"
     )
 
     if category_mode == "GS":
