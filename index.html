@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>5D Bubble Dashboard</title>
+  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+  <style>
+    :root {
+      --bg: #f5f7fb;
+      --card: #ffffff;
+      --border: #d9e0ea;
+      --text: #1f2937;
+      --muted: #6b7280;
+      --accent: #2563eb;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Arial, Helvetica, sans-serif;
+      color: var(--text);
+      background: var(--bg);
+    }
+    .wrap {
+      max-width: 1440px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+    .header { margin-bottom: 18px; }
+    .header h1 { margin: 0 0 6px; font-size: 30px; }
+    .header p { margin: 0; color: var(--muted); }
+    .layout {
+      display: grid;
+      grid-template-columns: 320px minmax(0, 1fr);
+      gap: 20px;
+      align-items: start;
+    }
+    .panel, .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
+    }
+    .panel { padding: 18px; position: sticky; top: 16px; }
+    .section-title {
+      margin: 0 0 14px;
+      font-size: 18px;
+    }
+    .control { margin-bottom: 18px; }
+    .control label, .control .label {
+      display: block;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+    select, input[type="range"] {
+      width: 100%;
+    }
+    select {
+      min-height: 110px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 8px;
+      background: #fff;
+    }
+    .range-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      align-items: center;
+    }
+    .range-grid input[type="number"] {
+      width: 100%;
+      padding: 8px 10px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+    }
+    .radio-group, .check-group {
+      display: grid;
+      gap: 8px;
+    }
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+    .metric {
+      padding: 18px;
+    }
+    .metric .k { font-size: 13px; color: var(--muted); margin-bottom: 8px; }
+    .metric .v { font-size: 28px; font-weight: 700; }
+    #chart.card { padding: 10px; min-height: 700px; }
+    .table-card { margin-top: 16px; padding: 16px; overflow: auto; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+    }
+    th, td {
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border);
+      text-align: left;
+      white-space: nowrap;
+    }
+    th { background: #f8fafc; position: sticky; top: 0; }
+    .status {
+      margin-bottom: 14px;
+      padding: 12px 14px;
+      border-radius: 12px;
+      background: #eff6ff;
+      color: #1d4ed8;
+      border: 1px solid #bfdbfe;
+    }
+    .status.error {
+      background: #fef2f2;
+      color: #b91c1c;
+      border-color: #fecaca;
+    }
+    .actions { display:flex; gap:8px; margin-top:10px; }
+    button {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: white;
+      padding: 8px 10px;
+      cursor: pointer;
+      font-weight: 600;
+    }
+    button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+    @media (max-width: 1100px) {
+      .layout { grid-template-columns: 1fr; }
+      .panel { position: static; }
+      .metrics { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="header">
+      <h1>5D Bubble Dashboard</h1>
+      <p>Reads <code>cm_data.xlsx</code> directly from the repository. Update the Excel file, push it, and refresh the page.</p>
+    </div>
+
+    <div id="status" class="status">Loading workbook…</div>
+
+    <div class="layout">
+      <aside class="panel">
+        <h2 class="section-title">Controls</h2>
+
+        <div class="control">
+          <div class="label">Category</div>
+          <select id="categorySelect" multiple></select>
+          <div class="actions">
+            <button type="button" data-target="categorySelect" class="primary select-all">Select all</button>
+            <button type="button" data-target="categorySelect" class="clear-all">Clear</button>
+          </div>
+        </div>
+
+        <div class="control">
+          <div class="label">GS</div>
+          <select id="gsSelect" multiple></select>
+          <div class="actions">
+            <button type="button" data-target="gsSelect" class="primary select-all">Select all</button>
+            <button type="button" data-target="gsSelect" class="clear-all">Clear</button>
+          </div>
+        </div>
+
+        <div class="control">
+          <div class="label">Value range</div>
+          <div class="range-grid">
+            <input id="valueMin" type="number" step="any" />
+            <input id="valueMax" type="number" step="any" />
+          </div>
+        </div>
+
+        <div class="control">
+          <div class="label">Bubble size scale</div>
+          <div class="range-grid">
+            <input id="bubbleMin" type="number" min="1" max="100" value="10" />
+            <input id="bubbleMax" type="number" min="1" max="100" value="28" />
+          </div>
+        </div>
+
+        <div class="control">
+          <div class="label">Color mode</div>
+          <div class="radio-group">
+            <label><input type="radio" name="colorMode" value="GS" checked /> GS</label>
+            <label><input type="radio" name="colorMode" value="Value" /> Value</label>
+          </div>
+        </div>
+
+        <div class="control">
+          <div class="label">Options</div>
+          <div class="check-group">
+            <label><input id="showLabels" type="checkbox" /> Show labels</label>
+            <label><input id="centerAxes" type="checkbox" checked /> Show centered axes at 2</label>
+            <label><input id="showPlanes" type="checkbox" /> Show center planes</label>
+          </div>
+        </div>
+      </aside>
+
+      <main>
+        <div class="metrics">
+          <div class="card metric"><div class="k">Visible bubbles</div><div id="metricCount" class="v">–</div></div>
+          <div class="card metric"><div class="k">Total value</div><div id="metricTotal" class="v">–</div></div>
+          <div class="card metric"><div class="k">Average value</div><div id="metricAverage" class="v">–</div></div>
+        </div>
+
+        <div id="chart" class="card"></div>
+
+        <div class="card table-card">
+          <h3 style="margin-top:0">Filtered data</h3>
+          <div id="tableWrap"></div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <script>
+    const EXCEL_PATH = './cm_data.xlsx';
+    const REQUIRED_COLUMNS = ['Category', 'Strategic', 'Risk', 'Sustainability', 'Value', 'GS'];
+    let rawRows = [];
+
+    function setStatus(message, isError = false) {
+      const el = document.getElementById('status');
+      el.textContent = message;
+      el.classList.toggle('error', isError);
+    }
+
+    function uniqueSorted(values) {
+      return [...new Set(values.filter(v => v !== null && v !== undefined && String(v).trim() !== ''))]
+        .map(v => String(v))
+        .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+    }
+
+    function normalizeSizes(values, minSize, maxSize) {
+      const nums = values.map(Number);
+      const vmin = Math.min(...nums);
+      const vmax = Math.max(...nums);
+      if (!Number.isFinite(vmin) || !Number.isFinite(vmax)) return nums.map(() => (minSize + maxSize) / 2);
+      if (Math.abs(vmax - vmin) < 1e-9) return nums.map(() => (minSize + maxSize) / 2);
+      return nums.map(v => minSize + ((v - vmin) * (maxSize - minSize)) / (vmax - vmin));
+    }
+
+    function getSelectedValues(selectId) {
+      const select = document.getElementById(selectId);
+      return Array.from(select.selectedOptions).map(opt => opt.value);
+    }
+
+    function fillMultiSelect(selectId, values) {
+      const select = document.getElementById(selectId);
+      select.innerHTML = '';
+      values.forEach(value => {
+        const opt = document.createElement('option');
+        opt.value = value;
+        opt.textContent = value;
+        opt.selected = true;
+        select.appendChild(opt);
+      });
+    }
+
+    function formatNumber(value) {
+      return Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 0 });
+    }
+
+    function addCenterAxes(data, center, axisMin, axisMax) {
+      data.push({ x:[axisMin, axisMax], y:[center, center], z:[center, center], type:'scatter3d', mode:'lines', line:{color:'black', width:4}, showlegend:false, hoverinfo:'skip' });
+      data.push({ x:[center, center], y:[axisMin, axisMax], z:[center, center], type:'scatter3d', mode:'lines', line:{color:'black', width:4}, showlegend:false, hoverinfo:'skip' });
+      data.push({ x:[center, center], y:[center, center], z:[axisMin, axisMax], type:'scatter3d', mode:'lines', line:{color:'black', width:4}, showlegend:false, hoverinfo:'skip' });
+    }
+
+    function addCenterPlanes(data, center, axisMin, axisMax) {
+      const grid = Array.from({length: 12}, (_, i) => axisMin + ((axisMax - axisMin) * i) / 11);
+      const xPlane = [], yPlane = [], zPlane = [];
+      grid.forEach(g1 => {
+        const rowX = [], rowY = [], rowZ = [];
+        grid.forEach(g2 => {
+          rowX.push(g1); rowY.push(g2); rowZ.push(center);
+        });
+        xPlane.push([...rowX]);
+        yPlane.push([...rowY]);
+        zPlane.push([...rowZ]);
+      });
+      const common = {type:'surface', opacity:0.08, showscale:false, hoverinfo:'skip'};
+      data.push({...common, x:xPlane.map(r => r.map(() => center)), y:yPlane, z:xPlane});
+      data.push({...common, x:xPlane, y:yPlane.map(r => r.map(() => center)), z:yPlane});
+      data.push({...common, x:xPlane, y:yPlane, z:zPlane});
+    }
+
+    function renderTable(rows) {
+      const wrap = document.getElementById('tableWrap');
+      if (!rows.length) {
+        wrap.innerHTML = '<p>No rows match the selected filters.</p>';
+        return;
+      }
+      const sorted = [...rows].sort((a, b) => Number(b.Value) - Number(a.Value));
+      let html = '<table><thead><tr><th>Category</th><th>Strategic</th><th>Risk</th><th>Sustainability</th><th>Value</th><th>GS</th></tr></thead><tbody>';
+      for (const row of sorted) {
+        html += `<tr><td>${escapeHtml(row.Category)}</td><td>${row.Strategic}</td><td>${row.Risk}</td><td>${row.Sustainability}</td><td>${formatNumber(row.Value)}</td><td>${escapeHtml(row.GS)}</td></tr>`;
+      }
+      html += '</tbody></table>';
+      wrap.innerHTML = html;
+    }
+
+    function escapeHtml(text) {
+      return String(text)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+
+    function buildFigure(rows) {
+      const bubbleMin = Number(document.getElementById('bubbleMin').value || 10);
+      const bubbleMax = Number(document.getElementById('bubbleMax').value || 28);
+      const showLabels = document.getElementById('showLabels').checked;
+      const centerAxes = document.getElementById('centerAxes').checked;
+      const showPlanes = document.getElementById('showPlanes').checked;
+      const colorMode = document.querySelector('input[name="colorMode"]:checked').value;
+      const bubbleSizes = normalizeSizes(rows.map(r => r.Value), bubbleMin, bubbleMax);
+      const axisMin = 0, axisMax = 4, center = 2;
+      const commonHover = '<b>%{text}</b><br>Strategic Importance: %{x}<br>Supplier Risk: %{y}<br>Potential for Sustainability: %{z}<br>Value: %{customdata[0]:,.0f}<br>G/S: %{customdata[1]}<extra></extra>';
+      const data = [];
+
+      if (colorMode === 'GS') {
+        const groups = uniqueSorted(rows.map(r => r.GS));
+        groups.forEach(gs => {
+          const subset = rows.map((r, idx) => ({...r, BubbleSize: bubbleSizes[idx]})).filter(r => String(r.GS) === gs);
+          data.push({
+            type: 'scatter3d',
+            mode: showLabels ? 'markers+text' : 'markers',
+            name: gs,
+            x: subset.map(r => r.Strategic),
+            y: subset.map(r => r.Risk),
+            z: subset.map(r => r.Sustainability),
+            text: subset.map(r => r.Category),
+            textposition: 'top center',
+            marker: { size: subset.map(r => r.BubbleSize), sizemode: 'diameter', opacity: 0.85, line: { width: 1 } },
+            customdata: subset.map(r => [r.Value, r.GS]),
+            hovertemplate: commonHover,
+          });
+        });
+      } else {
+        data.push({
+          type: 'scatter3d',
+          mode: showLabels ? 'markers+text' : 'markers',
+          x: rows.map(r => r.Strategic),
+          y: rows.map(r => r.Risk),
+          z: rows.map(r => r.Sustainability),
+          text: rows.map(r => r.Category),
+          textposition: 'top center',
+          marker: {
+            size: bubbleSizes,
+            sizemode: 'diameter',
+            color: rows.map(r => r.Value),
+            colorscale: 'Viridis',
+            colorbar: { title: 'Value' },
+            opacity: 0.85,
+            line: { width: 1 }
+          },
+          customdata: rows.map(r => [r.Value, r.GS]),
+          hovertemplate: commonHover,
+          showlegend: false,
+        });
+      }
+
+      if (centerAxes) addCenterAxes(data, center, axisMin, axisMax);
+      if (showPlanes) addCenterPlanes(data, center, axisMin, axisMax);
+
+      return {
+        data,
+        layout: {
+          title: '5D Bubble Chart',
+          margin: { l: 10, r: 10, t: 50, b: 10 },
+          legend: colorMode === 'GS' ? { title: { text: 'GS' } } : undefined,
+          scene: {
+            xaxis: { title: 'Strategic Importance', range: [axisMin, axisMax], nticks: 5, backgroundcolor: 'rgba(240,240,240,0.35)' },
+            yaxis: { title: 'Supplier Risk', range: [axisMin, axisMax], nticks: 5, backgroundcolor: 'rgba(240,240,240,0.35)' },
+            zaxis: { title: 'Potential for Sustainability', range: [axisMin, axisMax], nticks: 5, backgroundcolor: 'rgba(240,240,240,0.35)' },
+            aspectmode: 'cube'
+          }
+        }
+      };
+    }
+
+    function updateDashboard() {
+      if (!rawRows.length) return;
+
+      const selectedCategories = getSelectedValues('categorySelect');
+      const selectedGs = getSelectedValues('gsSelect');
+      const valueMin = Number(document.getElementById('valueMin').value);
+      const valueMax = Number(document.getElementById('valueMax').value);
+
+      const filtered = rawRows.filter(row =>
+        selectedCategories.includes(String(row.Category)) &&
+        selectedGs.includes(String(row.GS)) &&
+        Number(row.Value) >= valueMin &&
+        Number(row.Value) <= valueMax
+      );
+
+      document.getElementById('metricCount').textContent = formatNumber(filtered.length);
+      document.getElementById('metricTotal').textContent = formatNumber(filtered.reduce((sum, row) => sum + Number(row.Value || 0), 0));
+      document.getElementById('metricAverage').textContent = filtered.length ? formatNumber(filtered.reduce((sum, row) => sum + Number(row.Value || 0), 0) / filtered.length) : '0';
+
+      if (!filtered.length) {
+        document.getElementById('chart').innerHTML = '<div style="padding:24px;color:#b91c1c;">No rows match the selected filters.</div>';
+        renderTable([]);
+        return;
+      }
+
+      const fig = buildFigure(filtered);
+      Plotly.newPlot('chart', fig.data, fig.layout, { responsive: true, displaylogo: false });
+      renderTable(filtered);
+    }
+
+    async function loadWorkbook() {
+      try {
+        setStatus(`Loading ${EXCEL_PATH} ...`);
+        const response = await fetch(EXCEL_PATH, { cache: 'no-store' });
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status} while fetching ${EXCEL_PATH}`);
+        }
+        const arrayBuffer = await response.arrayBuffer();
+        const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+        const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(firstSheet, { defval: null, raw: true });
+
+        const missing = REQUIRED_COLUMNS.filter(col => !rows.length || !(col in rows[0]));
+        if (missing.length) {
+          throw new Error(`Missing required columns: ${missing.join(', ')}`);
+        }
+
+        rawRows = rows
+          .map(row => ({
+            Category: row.Category,
+            Strategic: Number(row.Strategic),
+            Risk: Number(row.Risk),
+            Sustainability: Number(row.Sustainability),
+            Value: Number(row.Value),
+            GS: String(row.GS ?? '')
+          }))
+          .filter(row => REQUIRED_COLUMNS.every(col => row[col] !== null && row[col] !== '' && Number.isFinite(col === 'Category' || col === 'GS' ? 1 : row[col])));
+
+        if (!rawRows.length) {
+          throw new Error('Workbook loaded, but no valid rows remained after validation.');
+        }
+
+        fillMultiSelect('categorySelect', uniqueSorted(rawRows.map(r => r.Category)));
+        fillMultiSelect('gsSelect', uniqueSorted(rawRows.map(r => r.GS)));
+
+        const values = rawRows.map(r => Number(r.Value));
+        const minVal = Math.min(...values);
+        const maxVal = Math.max(...values);
+        document.getElementById('valueMin').value = minVal;
+        document.getElementById('valueMax').value = maxVal;
+        document.getElementById('valueMin').min = minVal;
+        document.getElementById('valueMin').max = maxVal;
+        document.getElementById('valueMax').min = minVal;
+        document.getElementById('valueMax').max = maxVal;
+
+        setStatus(`Loaded ${rawRows.length} valid rows from ${EXCEL_PATH}. Update the Excel file in the repo and refresh to pick up changes.`);
+        updateDashboard();
+      } catch (error) {
+        console.error(error);
+        setStatus(error.message, true);
+      }
+    }
+
+    function attachEvents() {
+      document.querySelectorAll('select, input').forEach(el => {
+        el.addEventListener('change', updateDashboard);
+        if (el.type === 'number') {
+          el.addEventListener('input', updateDashboard);
+        }
+      });
+      document.querySelectorAll('.select-all').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const select = document.getElementById(btn.dataset.target);
+          Array.from(select.options).forEach(opt => opt.selected = true);
+          updateDashboard();
+        });
+      });
+      document.querySelectorAll('.clear-all').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const select = document.getElementById(btn.dataset.target);
+          Array.from(select.options).forEach(opt => opt.selected = false);
+          updateDashboard();
+        });
+      });
+    }
+
+    attachEvents();
+    loadWorkbook();
+  </script>
+</body>
+</html>
