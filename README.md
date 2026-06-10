@@ -1,4 +1,4 @@
-# 5D Bubble Dashboard (external Excel version)
+# 3D Bubble Dashboard (external Excel version)
 
 This version reads `cm_data.xlsx` at runtime in the browser instead of embedding the data into the HTML.
 
