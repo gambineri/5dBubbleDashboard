@@ -95,7 +95,7 @@
     table {
       width: 100%;
       border-collapse: collapse;
-      font-size: 14px;
+      font-size: 12px;
     }
     th, td {
       padding: 10px 12px;
@@ -138,10 +138,17 @@
   <div class="wrap">
     <div class="header">
       <h1>5D Bubble Dashboard</h1>
-      <p>Reads <code>cm_data.xlsx</code> directly from the repository. Update the Excel file, push it, and refresh the page.</p>
+      <p>When served from GitHub Pages or a local web server, this page auto-loads <code>cm_data.xlsx</code>. When opened directly from your PC, select the Excel file manually.</p>
     </div>
 
     <div id="status" class="status">Loading workbook…</div>
+
+    <div id="localFilePanel" class="status" style="display:none;">
+      <strong>Local mode:</strong> choose <code>cm_data.xlsx</code> from your computer.
+      <div class="actions">
+        <input id="excelFileInput" type="file" accept=".xlsx,.xls" />
+      </div>
+    </div>
 
     <div class="layout">
       <aside class="panel">
@@ -162,6 +169,15 @@
           <div class="actions">
             <button type="button" data-target="gsSelect" class="primary select-all">Select all</button>
             <button type="button" data-target="gsSelect" class="clear-all">Clear</button>
+          </div>
+        </div>
+
+        <div class="control">
+          <div class="label">Cluster</div>
+          <select id="clusterSelect" multiple></select>
+          <div class="actions">
+            <button type="button" data-target="clusterSelect" class="primary select-all">Select all</button>
+            <button type="button" data-target="clusterSelect" class="clear-all">Clear</button>
           </div>
         </div>
 
@@ -218,7 +234,7 @@
 
   <script>
     const EXCEL_PATH = './cm_data.xlsx';
-    const REQUIRED_COLUMNS = ['Category', 'Strategic', 'Risk', 'Sustainability', 'Value', 'GS'];
+    const REQUIRED_COLUMNS = ['Category', 'Strategic', 'Risk', 'Sustainability', 'Value', 'GS', 'Cluster'];
     let rawRows = [];
 
     function setStatus(message, isError = false) {
@@ -294,9 +310,9 @@
         return;
       }
       const sorted = [...rows].sort((a, b) => Number(b.Value) - Number(a.Value));
-      let html = '<table><thead><tr><th>Category</th><th>Strategic</th><th>Risk</th><th>Sustainability</th><th>Value</th><th>GS</th></tr></thead><tbody>';
+      let html = '<table><thead><tr><th>Category</th><th>Strategic</th><th>Risk</th><th>Sustainability</th><th>Value</th><th>GS</th><th>Cluster</th></tr></thead><tbody>';
       for (const row of sorted) {
-        html += `<tr><td>${escapeHtml(row.Category)}</td><td>${row.Strategic}</td><td>${row.Risk}</td><td>${row.Sustainability}</td><td>${formatNumber(row.Value)}</td><td>${escapeHtml(row.GS)}</td></tr>`;
+        html += `<tr><td>${escapeHtml(row.Category)}</td><td>${row.Strategic}</td><td>${row.Risk}</td><td>${row.Sustainability}</td><td>${formatNumber(row.Value)}</td><td>${escapeHtml(row.GS)}</td><td>${escapeHtml(row.Cluster)}</td></tr>`;
       }
       html += '</tbody></table>';
       wrap.innerHTML = html;
@@ -320,7 +336,7 @@
       const colorMode = document.querySelector('input[name="colorMode"]:checked').value;
       const bubbleSizes = normalizeSizes(rows.map(r => r.Value), bubbleMin, bubbleMax);
       const axisMin = 0, axisMax = 4, center = 2;
-      const commonHover = '<b>%{text}</b><br>Strategic Importance: %{x}<br>Supplier Risk: %{y}<br>Potential for Sustainability: %{z}<br>Value: %{customdata[0]:,.0f}<br>G/S: %{customdata[1]}<extra></extra>';
+      const commonHover = '<b>%{text}</b><br>Strategic Importance: %{x}<br>Supplier Risk: %{y}<br>Potential for Sustainability: %{z}<br>Value: %{customdata[0]:,.0f}<br>G/S: %{customdata[1]}<br>Cluster: %{customdata[2]}<extra></extra>';
       const data = [];
 
       if (colorMode === 'GS') {
@@ -337,7 +353,7 @@
             text: subset.map(r => r.Category),
             textposition: 'top center',
             marker: { size: subset.map(r => r.BubbleSize), sizemode: 'diameter', opacity: 0.85, line: { width: 1 } },
-            customdata: subset.map(r => [r.Value, r.GS]),
+            customdata: subset.map(r => [r.Value, r.GS, r.Cluster]),
             hovertemplate: commonHover,
           });
         });
@@ -359,7 +375,7 @@
             opacity: 0.85,
             line: { width: 1 }
           },
-          customdata: rows.map(r => [r.Value, r.GS]),
+          customdata: rows.map(r => [r.Value, r.GS, r.Cluster]),
           hovertemplate: commonHover,
           showlegend: false,
         });
@@ -389,12 +405,14 @@
 
       const selectedCategories = getSelectedValues('categorySelect');
       const selectedGs = getSelectedValues('gsSelect');
+      const selectedClusters = getSelectedValues('clusterSelect');
       const valueMin = Number(document.getElementById('valueMin').value);
       const valueMax = Number(document.getElementById('valueMax').value);
 
       const filtered = rawRows.filter(row =>
         selectedCategories.includes(String(row.Category)) &&
         selectedGs.includes(String(row.GS)) &&
+        selectedClusters.includes(String(row.Cluster)) &&
         Number(row.Value) >= valueMin &&
         Number(row.Value) <= valueMax
       );
@@ -414,7 +432,97 @@
       renderTable(filtered);
     }
 
-    async function loadWorkbook() {
+    function normalizeHeaderName(name) {
+      return String(name ?? '').trim().toLowerCase().replace(/[\s_-]+/g, '');
+    }
+
+    function getCellValue(row, headerMap, canonicalName) {
+      const actualHeader = headerMap[canonicalName];
+      return actualHeader ? row[actualHeader] : null;
+    }
+
+    function processWorkbook(arrayBuffer, sourceLabel) {
+      const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+      if (!workbook.Sheets['data']) {
+        throw new Error("Required sheet 'data' not found in workbook. Please rename the worksheet tab to exactly: data");
+      }
+
+      const firstSheet = workbook.Sheets['data'];
+      const rows = XLSX.utils.sheet_to_json(firstSheet, { defval: null, raw: true });
+      if (!rows.length) {
+        throw new Error("Sheet 'data' is empty or has no readable header row.");
+      }
+
+      const actualHeaders = Object.keys(rows[0]);
+      const normalizedToActual = {};
+      actualHeaders.forEach(header => {
+        normalizedToActual[normalizeHeaderName(header)] = header;
+      });
+
+      const aliases = {
+        Category: ['category'],
+        Strategic: ['strategic', 'si', 'strategicimportance'],
+        Risk: ['risk', 'sr', 'supplierrisk'],
+        Sustainability: ['sustainability', 'sp', 'potentialforsustainability'],
+        Value: ['value'],
+        GS: ['gs', 'g/s', 'g-s'],
+        Cluster: ['cluster']
+      };
+
+      const headerMap = {};
+      REQUIRED_COLUMNS.forEach(required => {
+        const match = aliases[required].map(normalizeHeaderName).find(alias => normalizedToActual[alias]);
+        if (match) headerMap[required] = normalizedToActual[match];
+      });
+
+      const missing = REQUIRED_COLUMNS.filter(col => !headerMap[col]);
+      if (missing.length) {
+        throw new Error(`Missing required columns in sheet 'data': ${missing.join(', ')}. Found headers: ${actualHeaders.join(', ')}`);
+      }
+
+      rawRows = rows
+        .map(row => ({
+          Category: getCellValue(row, headerMap, 'Category'),
+          Strategic: Number(getCellValue(row, headerMap, 'Strategic')),
+          Risk: Number(getCellValue(row, headerMap, 'Risk')),
+          Sustainability: Number(getCellValue(row, headerMap, 'Sustainability')),
+          Value: Number(getCellValue(row, headerMap, 'Value')),
+          GS: String(getCellValue(row, headerMap, 'GS') ?? ''),
+          Cluster: String(getCellValue(row, headerMap, 'Cluster') ?? '')
+        }))
+        .filter(row =>
+          row.Category !== null && row.Category !== '' &&
+          row.GS !== null && row.GS !== '' &&
+          row.Cluster !== null && row.Cluster !== '' &&
+          Number.isFinite(row.Strategic) &&
+          Number.isFinite(row.Risk) &&
+          Number.isFinite(row.Sustainability) &&
+          Number.isFinite(row.Value)
+        );
+
+      if (!rawRows.length) {
+        throw new Error("Workbook loaded from sheet 'data', but no valid rows remained after validation.");
+      }
+
+      fillMultiSelect('categorySelect', uniqueSorted(rawRows.map(r => r.Category)));
+      fillMultiSelect('gsSelect', uniqueSorted(rawRows.map(r => r.GS)));
+      fillMultiSelect('clusterSelect', uniqueSorted(rawRows.map(r => r.Cluster)));
+
+      const values = rawRows.map(r => Number(r.Value));
+      const minVal = Math.min(...values);
+      const maxVal = Math.max(...values);
+      document.getElementById('valueMin').value = minVal;
+      document.getElementById('valueMax').value = maxVal;
+      document.getElementById('valueMin').min = minVal;
+      document.getElementById('valueMin').max = maxVal;
+      document.getElementById('valueMax').min = minVal;
+      document.getElementById('valueMax').max = maxVal;
+
+      setStatus(`Loaded ${rawRows.length} valid rows from ${sourceLabel}, sheet 'data'.`);
+      updateDashboard();
+    }
+
+    async function loadWorkbookFromUrl() {
       try {
         setStatus(`Loading ${EXCEL_PATH} ...`);
         const response = await fetch(EXCEL_PATH, { cache: 'no-store' });
@@ -422,48 +530,40 @@
           throw new Error(`HTTP ${response.status} while fetching ${EXCEL_PATH}`);
         }
         const arrayBuffer = await response.arrayBuffer();
-        const workbook = XLSX.read(arrayBuffer, { type: 'array' });
-        const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-        const rows = XLSX.utils.sheet_to_json(firstSheet, { defval: null, raw: true });
-
-        const missing = REQUIRED_COLUMNS.filter(col => !rows.length || !(col in rows[0]));
-        if (missing.length) {
-          throw new Error(`Missing required columns: ${missing.join(', ')}`);
-        }
-
-        rawRows = rows
-          .map(row => ({
-            Category: row.Category,
-            Strategic: Number(row.Strategic),
-            Risk: Number(row.Risk),
-            Sustainability: Number(row.Sustainability),
-            Value: Number(row.Value),
-            GS: String(row.GS ?? '')
-          }))
-          .filter(row => REQUIRED_COLUMNS.every(col => row[col] !== null && row[col] !== '' && Number.isFinite(col === 'Category' || col === 'GS' ? 1 : row[col])));
-
-        if (!rawRows.length) {
-          throw new Error('Workbook loaded, but no valid rows remained after validation.');
-        }
-
-        fillMultiSelect('categorySelect', uniqueSorted(rawRows.map(r => r.Category)));
-        fillMultiSelect('gsSelect', uniqueSorted(rawRows.map(r => r.GS)));
-
-        const values = rawRows.map(r => Number(r.Value));
-        const minVal = Math.min(...values);
-        const maxVal = Math.max(...values);
-        document.getElementById('valueMin').value = minVal;
-        document.getElementById('valueMax').value = maxVal;
-        document.getElementById('valueMin').min = minVal;
-        document.getElementById('valueMin').max = maxVal;
-        document.getElementById('valueMax').min = minVal;
-        document.getElementById('valueMax').max = maxVal;
-
-        setStatus(`Loaded ${rawRows.length} valid rows from ${EXCEL_PATH}. Update the Excel file in the repo and refresh to pick up changes.`);
-        updateDashboard();
+        processWorkbook(arrayBuffer, EXCEL_PATH);
       } catch (error) {
         console.error(error);
         setStatus(error.message, true);
+      }
+    }
+
+    async function loadWorkbookFromFile(file) {
+      try {
+        if (!file) return;
+        setStatus(`Loading ${file.name} ...`);
+        const arrayBuffer = await file.arrayBuffer();
+        processWorkbook(arrayBuffer, file.name);
+      } catch (error) {
+        console.error(error);
+        setStatus(error.message, true);
+      }
+    }
+
+    function initWorkbookLoading() {
+      const isLocalFile = window.location.protocol === 'file:';
+      const localPanel = document.getElementById('localFilePanel');
+      const fileInput = document.getElementById('excelFileInput');
+
+      fileInput.addEventListener('change', event => {
+        loadWorkbookFromFile(event.target.files[0]);
+      });
+
+      if (isLocalFile) {
+        localPanel.style.display = 'block';
+        setStatus('Opened as a local file. Please select cm_data.xlsx to load the dashboard.');
+      } else {
+        localPanel.style.display = 'none';
+        loadWorkbookFromUrl();
       }
     }
 
@@ -491,7 +591,7 @@
     }
 
     attachEvents();
-    loadWorkbook();
+    initWorkbookLoading();
   </script>
 </body>
 </html>
