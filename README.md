@@ -1,6 +1,8 @@
-# 3d Bubble Dashboard 
+# 5d Bubble Dashboard 
 
+A 3d visual to map 5d data structures.
 This version reads `cm_data.xlsx` at runtime in the browser instead of embedding the data into the HTML.
+Source data can now be provided locally or through this repo.
 
 ## Files
 - `index.html` – the static dashboard
